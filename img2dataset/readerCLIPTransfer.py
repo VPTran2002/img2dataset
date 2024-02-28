@@ -9,10 +9,28 @@ import pyarrow.csv as csv_pa
 import pyarrow.json as json_pa
 import pyarrow as pa
 import pandas as pd
+import open_clip
+import torch
+import heapq
 
 
+from torch.utils.data import Dataset, DataLoader
 
-class Reader:
+class CustomDataset(Dataset):
+    def __init__(self, dataframe, tokenizer):
+        self.dataframe = dataframe
+        self.tokenizer = tokenizer
+
+    def __len__(self):
+        return len(self.dataframe)
+
+    def __getitem__(self, idx):
+        caption = self.dataframe.iloc[idx]['label']
+        caption_feature = self.tokenizer(caption)
+
+        return idx, caption_feature 
+
+class ReaderCLIPTransfer:
     """
     The reader class reads an url list and returns shards
     It provides an iter method
@@ -27,6 +45,12 @@ class Reader:
     - number_sample_per_shard: the number of samples per shard
     - done_shards: a set of already done shards
     - start_shard_id: the shard id to begin downloading from
+    - model: the model which is supposed to be used to filter the dataset. To find out more which pretrained model/dataset pairs are available run open_clip.pretrained()
+    - pretrained: the dataset the model was pretrained on. To find out more which pretrained model/dataset pairs are available run open_clip.pretrained()
+    - captions: the captions which are used as a template to calculate epsilon distances
+    - number_elements: How many results do wen want to have?
+    - batch_size: batch size for loading the metadata
+    - num_workers: number of workers for loading the metadata
     """
 
     def __init__(
@@ -42,6 +66,12 @@ class Reader:
         done_shards,
         tmp_path,
         start_shard_id: int = 0,
+        model: str = "ViT-B-32",
+        pretrained: str = "laion400m_e32",
+        captions: list=["a dog", "a cat", "an airplane"],
+        number_elements: int = 2000000,
+        batch_size: int = 256,
+        num_workers: int = 5,
     ) -> None:
         self.input_format = input_format
         self.url_col = url_col
@@ -52,6 +82,23 @@ class Reader:
         self.number_sample_per_shard = number_sample_per_shard
         self.done_shards = done_shards
         self.start_shard_id = start_shard_id
+
+        self.batch_size = batch_size
+        self.num_elements_per_caption = (int)(number_elements/len(captions))
+        self.num_workers = num_workers
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model, _, _ = open_clip.create_model_and_transforms(model, pretrained=pretrained)
+        self.model.to(self.device)
+        self.tokenizer = open_clip.get_tokenizer(model)
+        self.caption_features_targets = self.model.encode_text(self.tokenizer(captions)) #this is a matrix of dimension Nx(dimension feature embedding)
+        self.caption_features_targets /= self.caption_features_targets.norm(dim=-1, keepdim=True)
+
+        #heap for
+        self.number_elements = number_elements
+        self.priority_queues = []
+        for i in range(len(captions)):
+            self.priority_queues.append([])
 
         fs, url_path = fsspec.core.url_to_fs(url_list)
         self.fs = fs
@@ -79,8 +126,31 @@ class Reader:
         else:
             raise ValueError(f"Invalid input format {self.input_format}")
 
+    def updatePriorityQueue(self, dataloader: DataLoader):
+        for batch in dataloader:
+            caption_features = batch[1].to(self.device)
+            caption_embedding_unnorm = self.model.encode(caption_features)
+            caption_embedding_norm = caption_embedding_unnorm / caption_embedding_unnorm.norm(dim=-1, keepdim=True)
+            #calculate distances
+            distances = caption_embedding_norm @ self.caption_features_targets.T
+            shortest_distance, index_shortest_distance = distances.min(dim=-1)
+            shortest_distance_np = -shortest_distance.to("cpu").numpy() # welche priorität
+            index_shortest_distance_np = index_shortest_distance.to("cpu").numpy() #welche priority queue
+            url_indices = batch[0].numpy() #welcher value in der priority
+            for i in range(shortest_distance_np.shape[0]):
+                heapq.heappush(self.priority_queues[index_shortest_distance_np[i]], (shortest_distance_np[i], url_indices[i]))
+            self.cut_down_prriority_queues()    
+
+    def cut_down_prriority_queues(self):
+        for i in range(len(self.priority_queues)):
+            priority_queue_i = self.priority_queues[i]
+            if(len(priority_queue_i) <= self.num_elements_per_caption):
+                continue
+            for j in range(len(priority_queue_i)-self.num_elements_per_caption):
+                heapq.heappop(priority_queue_i)                
+
     def _save_to_arrow(self, input_file, start_shard_id):
-        """Read the input file and save to arrow files in a temporary directory"""
+        """Read the input file and save to arrow files in a temporary directory""" 
         if self.input_format in [
             "txt",
             "txt.gz",
@@ -132,6 +202,10 @@ class Reader:
         column_names = [c if c != self.url_col else "url" for c in column_names]
 
         df = df.rename_columns(column_names)
+        dataset_url_cap = CustomDataset(df)
+        dataloader = DataLoader(dataset_url_cap, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+
+        self.updatePriorityQueue(dataloader)
 
         number_samples = df.num_rows
 

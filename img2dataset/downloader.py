@@ -13,8 +13,8 @@ import pyarrow as pa
 import traceback
 
 import fsspec
-from .logger import CappedCounter
-from .logger import write_stats
+from logger import CappedCounter
+from logger import write_stats
 
 
 def is_disallowed(headers, user_agent_token, disallowed_header_directives):

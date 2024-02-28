@@ -23,7 +23,11 @@ def retrier(runf, failed_shards, max_shard_retry):
 
 def multiprocessing_distributor(processes_count, downloader, reader, _, max_shard_retry):
     """Distribute the work to the processes using multiprocessing"""
-    ctx = get_context("spawn")
+    for s in reader:
+        print("Hallo")
+
+    #ctx = get_context("spawn")
+    """
     with ctx.Pool(processes_count, maxtasksperchild=5) as process_pool:
 
         def run(gen):
@@ -40,6 +44,7 @@ def multiprocessing_distributor(processes_count, downloader, reader, _, max_shar
         process_pool.terminate()
         process_pool.join()
         del process_pool
+    """
 
 
 def pyspark_distributor(processes_count, downloader, reader, subjob_size, max_shard_retry):

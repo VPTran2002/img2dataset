@@ -3,19 +3,19 @@
 from typing import List, Optional
 import fire
 import logging
-from .logger import LoggerProcess
-from .resizer import Resizer
-from .blurrer import BoundingBoxBlurrer
-from .writer import (
+from logger import LoggerProcess
+from resizer import Resizer
+from blurrer import BoundingBoxBlurrer
+from writer import (
     WebDatasetSampleWriter,
     FilesSampleWriter,
     ParquetSampleWriter,
     TFRecordSampleWriter,
     DummySampleWriter,
 )
-from .reader import Reader
-from .downloader import Downloader
-from .distributor import (
+from readerCLIPTransfer import ReaderCLIPTransfer
+from downloader import Downloader
+from distributor import (
     multiprocessing_distributor,
     pyspark_distributor,
     ray_distributor,
@@ -108,6 +108,9 @@ def download(
     max_shard_retry: int = 1,
     user_agent_token: Optional[str] = None,
     disallowed_header_directives: Optional[List[str]] = None,
+    model: str='ViT-B-32',
+    pretrained: str='laion400m_e32',
+    captions: list = ["a dog", "a cat", "an airplane"]
 ):
     """Download is the main entry point of img2dataset, it uses multiple processes and download multiple files"""
     if disallowed_header_directives is None:
@@ -166,8 +169,8 @@ def download(
         else:
             raise ValueError(f"Unknown incremental mode {incremental_mode}")
 
-    logger_process.done_shards = done_shards
-    logger_process.start()
+    #logger_process.done_shards = done_shards
+    #logger_process.start()
 
     if bbox_col is not None:
         if save_additional_columns is None:
@@ -181,7 +184,7 @@ def download(
         verify_hash_col = None
         verify_hash_type = None
 
-    reader = Reader(
+    reader = ReaderCLIPTransfer(
         url_list,
         input_format,
         url_col,
@@ -193,6 +196,9 @@ def download(
         done_shards,
         tmp_path,
         start_shard_id,
+        model=model,
+        pretrained=pretrained,
+        captions=captions
     )
 
     if output_format == "webdataset":
@@ -266,14 +272,16 @@ def download(
         subjob_size,
         max_shard_retry,
     )
-    logger_process.join()
+    #logger_process.join()
 
     if not hasattr(fs, "s3"):
         fs.rm(tmp_dir, recursive=True)
 
 
-def main():
-    fire.Fire(download)
+#def main():
+download(url_list="laion400m-meta", input_format="parquet", url_col="URL", caption_col="TEXT", output_format="webdataset", output_folder="laion400m-data",
+      processes_count=1, thread_count=1, image_size=256, save_additional_columns=["NSFW", "similarity", "LICENSE"], enable_wandb=True)   
+#    fire.Fire(download)
 
 
 #if __name__ == "__main__":
