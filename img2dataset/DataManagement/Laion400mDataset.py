@@ -8,30 +8,17 @@ import heapq
 import time
 
 class DatasetMetaData(Dataset):
-    def __init__(self, dataframe, tokenizer, batch_size):
+    def __init__(self, dataframe):
         self.dataframe = dataframe
-        self.tokenizer = tokenizer
-        self.batch_size = batch_size
         self.total_rows = len(dataframe)
-        self.num_batches = (self.total_rows + self.batch_size - 1) // self.batch_size
         self.batch_start = -1
-        self.current_slice = self.dataframe.to_pandas()#None
+        self.data= self.dataframe.to_pandas()#None
 
     def __len__(self):
         return self.total_rows
 
     def __getitem__(self, idx):
-        #batch_idx = idx // self.batch_size
-        #batch_start = batch_idx * self.batch_size
-        #idx_within_batch = idx - batch_start
-
-        #if batch_start != self.batch_start:
-        #    self.batch_start = batch_start
-        #    batch_end = min(batch_start + self.batch_size, self.total_rows)
-        #    self.current_slice = self.dataframe.slice(batch_start, batch_end).to_pandas()
-        
-        #caption = self.current_slice.iloc[idx_within_batch]['caption']
-        caption = self.current_slice.iloc[idx]['caption']
+        caption = self.data.iloc[idx]['caption']
         if caption is None:
             return "", idx
         return caption, idx 
@@ -84,7 +71,7 @@ class Laion400mDataset(Dataset):
     def __collect_urls_file(self, meta_data_file):
         df = self.__download_meta_to_pyarrow_table(meta_data_file)
         df = self.__rename_cols_in_pyarrow_table(df)
-        dataset_url_cap = DatasetMetaData(df, self.tokenizer, self.batch_size_meta)
+        dataset_url_cap = DatasetMetaData(df)
         def collate_fn(batch):
             with torch.no_grad():
                 caption, idx = zip(*batch)
@@ -106,8 +93,8 @@ class Laion400mDataset(Dataset):
     def __updatePriorityQueue(self, dataloader: DataLoader):
         with torch.no_grad():
             j = 0
+            start = time.time()
             for batch in dataloader:
-                start = time.time()
                 caption_tokens = batch[0].to(self.device)
                 caption_features = self.model.encode_text(caption_tokens)
                 caption_features = caption_features / caption_features.norm(dim=-1, keepdim=True)
@@ -127,12 +114,13 @@ class Laion400mDataset(Dataset):
                         heapq.heappush(self.priority_queues[index_shortest_distance_np[i]], (shortest_distance_np[i], url_indices[i]))
 
                 self.__cut_down_prriority_queues()
-                stop = time.time()
-                duration_batch = (stop-start)/self.batch_size_meta
                 if j % 100 == 0:
-                    print("Iteration number " + str(i))
-                    print(duration_batch)
+                    print("Iteration number " + str(j))
                 j += 1
+            stop = time.time()
+            duration_batch = (stop-start)/60000
+            print("Time one shard: " + str(duration_batch))
+
     
 
     def __cut_down_prriority_queues(self):
@@ -167,7 +155,7 @@ class Laion400mDataset(Dataset):
         pass
 
 def main():
-    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=3, num_workers=0)   
+    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=10000, num_workers=12)   
 
 
 if __name__ == "__main__":
