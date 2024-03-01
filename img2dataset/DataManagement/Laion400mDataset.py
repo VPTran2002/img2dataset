@@ -88,7 +88,7 @@ class Laion400mDataset(Dataset):
         def collate_fn(batch):
             with torch.no_grad():
                 caption, idx = zip(*batch)
-                print("collate")
+                print(caption)
                 return self.tokenizer(caption), idx
         dataloader = DataLoader(dataset_url_cap, batch_size=self.batch_size_meta, shuffle=False, collate_fn=collate_fn, num_workers=self.num_workers)#self.num_workers)
         self.__updatePriorityQueue(dataloader)
@@ -107,6 +107,7 @@ class Laion400mDataset(Dataset):
     def __updatePriorityQueue(self, dataloader: DataLoader):
         with torch.no_grad():
             j = 0
+            print("Start")
             for batch in dataloader:
                 start = time.time()
                 caption_tokens = batch[0].to(self.device)
@@ -168,7 +169,7 @@ class Laion400mDataset(Dataset):
         pass
 
 def main():
-    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=4096, num_workers=8)   
+    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=4096, num_workers=6)   
 
 
 if __name__ == "__main__":
