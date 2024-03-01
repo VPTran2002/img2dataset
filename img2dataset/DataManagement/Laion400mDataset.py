@@ -162,7 +162,6 @@ class Laion400mDataset(Dataset):
 
 def main():
     l = Laion400mDataset(num_elements_per_caption=5, batch_size_meta=100, num_workers=0)   
-#    fire.Fire(download)
 
 
 if __name__ == "__main__":
