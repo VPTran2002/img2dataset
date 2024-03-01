@@ -84,7 +84,7 @@ class Laion400mDataset(Dataset):
         def collate_fn(batch):
             with torch.no_grad():
                 caption, idx = zip(*batch)
-                return self.model.encode_text(self.tokenizer(caption).to(self.device)), idx
+                return self.tokenizer(caption), idx
         dataloader = DataLoader(dataset_url_cap, batch_size=self.batch_size_meta, shuffle=False, collate_fn=collate_fn, num_workers=self.num_workers)#self.num_workers)
         self.__updatePriorityQueue(dataloader)
 
@@ -104,7 +104,8 @@ class Laion400mDataset(Dataset):
             i = 0
             for batch in dataloader:
                 start = time.time()
-                caption_features = batch[0].to(self.device)
+                caption_tokens = batch[0].to(self.device)
+                caption_features = self.model.encode_text(caption_tokens)
                 caption_features = caption_features / caption_features.norm(dim=-1, keepdim=True)
                 #calculate distances
                 distances = caption_features @ self.caption_features_targets.T
@@ -160,7 +161,7 @@ class Laion400mDataset(Dataset):
         pass
 
 def main():
-    l = Laion400mDataset(num_elements_per_caption=5, batch_size_meta=100, num_workers=0)   
+    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=5000, num_workers=6)   
 
 
 if __name__ == "__main__":
