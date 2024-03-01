@@ -108,11 +108,8 @@ class Laion400mDataset(Dataset):
             i = 0
             for batch in dataloader:
                 start = time.time()
-                print("before")
                 caption_tokens = batch[0].to(self.device)
-                print("after1")
                 caption_features = self.model.encode_text(caption_tokens)
-                print("after2")
                 caption_features = caption_features / caption_features.norm(dim=-1, keepdim=True)
                 #calculate distances
                 distances = caption_features @ self.caption_features_targets.T
@@ -132,7 +129,7 @@ class Laion400mDataset(Dataset):
                 self.__cut_down_prriority_queues()
                 stop = time.time()
                 duration_batch = (stop-start)/self.batch_size_meta
-                if(i % 100 == 0):
+                if i % 100 == 0:
                     print("Iteration number " + str(i))
                     print(duration_batch)    
 
@@ -168,7 +165,7 @@ class Laion400mDataset(Dataset):
         pass
 
 def main():
-    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=5000, num_workers=4)   
+    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=10000, num_workers=6)   
 
 
 if __name__ == "__main__":
