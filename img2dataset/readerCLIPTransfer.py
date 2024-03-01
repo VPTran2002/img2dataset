@@ -17,18 +17,35 @@ import heapq
 from torch.utils.data import Dataset, DataLoader
 
 class CustomDataset(Dataset):
-    def __init__(self, dataframe, tokenizer):
+
+    def __init__(self, dataframe, tokenizer, batch_size):
         self.dataframe = dataframe
         self.tokenizer = tokenizer
+        self.batch_size = batch_size
+        self.total_rows = len(dataframe)
+        self.num_batches = (self.total_rows + self.batch_size - 1) // self.batch_size
+        self.batch_start = -1
+        self.current_slice = None
 
     def __len__(self):
-        return len(self.dataframe)
+        return self.total_rows
 
     def __getitem__(self, idx):
-        caption = self.dataframe.iloc[idx]['label']
-        caption_feature = self.tokenizer(caption)
+        
+        batch_idx = idx // self.batch_size
+        batch_start = batch_idx * self.batch_size
+        idx_within_batch = idx - batch_start
 
-        return idx, caption_feature 
+        if batch_start != self.batch_start:
+            self.batch_start = batch_start
+            batch_end = min(batch_start + self.batch_size, self.total_rows)
+            self.current_slice = self.dataframe.slice(batch_start, batch_end).to_pandas()
+        
+        caption = self.current_slice.iloc[idx_within_batch]['caption']
+        return caption, idx
+
+
+    
 
 class ReaderCLIPTransfer:
     """
@@ -91,8 +108,9 @@ class ReaderCLIPTransfer:
         self.model, _, _ = open_clip.create_model_and_transforms(model, pretrained=pretrained)
         self.model.to(self.device)
         self.tokenizer = open_clip.get_tokenizer(model)
-        self.caption_features_targets = self.model.encode_text(self.tokenizer(captions)) #this is a matrix of dimension Nx(dimension feature embedding)
-        self.caption_features_targets /= self.caption_features_targets.norm(dim=-1, keepdim=True)
+        with torch.no_grad():
+            self.caption_features_targets = self.model.encode_text(self.tokenizer(captions)) #this is a matrix of dimension Nx(dimension feature embedding)
+            self.caption_features_targets /= self.caption_features_targets.norm(dim=-1, keepdim=True)
 
         #heap for
         self.number_elements = number_elements
@@ -127,25 +145,25 @@ class ReaderCLIPTransfer:
             raise ValueError(f"Invalid input format {self.input_format}")
 
     def updatePriorityQueue(self, dataloader: DataLoader):
-        for batch in dataloader:
-            caption_features = batch[1].to(self.device)
-            caption_embedding_unnorm = self.model.encode(caption_features)
-            caption_embedding_norm = caption_embedding_unnorm / caption_embedding_unnorm.norm(dim=-1, keepdim=True)
-            #calculate distances
-            distances = caption_embedding_norm @ self.caption_features_targets.T
-            shortest_distance, index_shortest_distance = distances.min(dim=-1)
-            shortest_distance_np = -shortest_distance.to("cpu").numpy() # welche priorität
-            index_shortest_distance_np = index_shortest_distance.to("cpu").numpy() #welche priority queue
-            url_indices = batch[0].numpy() #welcher value in der priority
-            for i in range(shortest_distance_np.shape[0]):
-                heapq.heappush(self.priority_queues[index_shortest_distance_np[i]], (shortest_distance_np[i], url_indices[i]))
-            self.cut_down_prriority_queues()    
+        with torch.no_grad():
+            for batch in dataloader:
+                caption_features = batch[0].to(self.device)
+                caption_features = caption_features / caption_features.norm(dim=-1, keepdim=True)
+                #calculate distances
+                distances = caption_features @ self.caption_features_targets.T
+                shortest_distance, index_shortest_distance = distances.min(dim=-1)
+                shortest_distance_np = -shortest_distance.to("cpu").numpy() # welche priorität
+                index_shortest_distance_np = index_shortest_distance.to("cpu").numpy() #welche priority queue
+                url_indices = batch[1] #welcher value in der priority
+                for i in range(shortest_distance_np.shape[0]):
+                    heapq.heappush(self.priority_queues[index_shortest_distance_np[i]], (shortest_distance_np[i], url_indices[i]))
+                self.cut_down_prriority_queues()    
 
     def cut_down_prriority_queues(self):
         for i in range(len(self.priority_queues)):
             priority_queue_i = self.priority_queues[i]
             if(len(priority_queue_i) <= self.num_elements_per_caption):
-                continue
+                break
             for j in range(len(priority_queue_i)-self.num_elements_per_caption):
                 heapq.heappop(priority_queue_i)                
 
@@ -202,8 +220,12 @@ class ReaderCLIPTransfer:
         column_names = [c if c != self.url_col else "url" for c in column_names]
 
         df = df.rename_columns(column_names)
-        dataset_url_cap = CustomDataset(df)
-        dataloader = DataLoader(dataset_url_cap, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+        dataset_url_cap = CustomDataset(df, self.tokenizer, 1000)
+        def collate_fn(batch):
+            with torch.no_grad():
+                caption, idx = zip(*batch)
+                return self.model.encode_text(self.tokenizer(caption)), idx
+        dataloader = DataLoader(dataset_url_cap, batch_size=5, shuffle=False, collate_fn=collate_fn)#self.num_workers) self.batch_size
 
         self.updatePriorityQueue(dataloader)
 

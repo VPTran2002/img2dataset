@@ -278,11 +278,11 @@ def download(
         fs.rm(tmp_dir, recursive=True)
 
 
-#def main():
-download(url_list="laion400m-meta", input_format="parquet", url_col="URL", caption_col="TEXT", output_format="webdataset", output_folder="laion400m-data",
+def main():
+    download(url_list="laion400m-meta", input_format="parquet", url_col="URL", caption_col="TEXT", output_format="webdataset", output_folder="laion400m-data",
       processes_count=1, thread_count=1, image_size=256, save_additional_columns=["NSFW", "similarity", "LICENSE"], enable_wandb=True)   
 #    fire.Fire(download)
 
 
-#if __name__ == "__main__":
-#    main()
+if __name__ == "__main__":
+    main()
