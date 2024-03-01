@@ -31,6 +31,9 @@ class DatasetMetaData(Dataset):
             self.current_slice = self.dataframe.slice(batch_start, batch_end).to_pandas()
         
         caption = self.current_slice.iloc[idx_within_batch]['caption']
+        if caption is None:
+            print("Index: " + str(idx_within_batch))
+            print(caption)
         return caption, idx 
 
 
@@ -86,11 +89,6 @@ class Laion400mDataset(Dataset):
             with torch.no_grad():
                 caption, idx = zip(*batch)
                 print(caption)
-                for i in range(len(caption)):
-                    try:
-                        self.tokenizer(caption[i])
-                    except:
-                        print("Fucking caption: " + caption[i])
                 return self.tokenizer(caption), idx
         dataloader = DataLoader(dataset_url_cap, batch_size=self.batch_size_meta, shuffle=False, collate_fn=collate_fn, num_workers=self.num_workers)#self.num_workers)
         self.__updatePriorityQueue(dataloader)
