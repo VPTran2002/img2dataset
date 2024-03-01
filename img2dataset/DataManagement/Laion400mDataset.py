@@ -86,7 +86,11 @@ class Laion400mDataset(Dataset):
             with torch.no_grad():
                 caption, idx = zip(*batch)
                 print(caption)
-                print(self.tokenizer(caption))
+                for i in range(len(caption)):
+                    try:
+                        self.tokenizer(caption[i])
+                    except:
+                        print("Fucking caption: " + caption[i])
                 return self.tokenizer(caption), idx
         dataloader = DataLoader(dataset_url_cap, batch_size=self.batch_size_meta, shuffle=False, collate_fn=collate_fn, num_workers=self.num_workers)#self.num_workers)
         self.__updatePriorityQueue(dataloader)
