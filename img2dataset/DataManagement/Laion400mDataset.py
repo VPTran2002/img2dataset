@@ -108,8 +108,8 @@ class Laion400mDataset(Dataset):
         with torch.no_grad():
             j = 0
             print("Start")
+            start = time.time()
             for batch in dataloader:
-                start = time.time()
                 caption_tokens = batch[0].to(self.device)
                 caption_features = self.model.encode_text(caption_tokens)
                 caption_features = caption_features / caption_features.norm(dim=-1, keepdim=True)
@@ -129,12 +129,15 @@ class Laion400mDataset(Dataset):
                         heapq.heappush(self.priority_queues[index_shortest_distance_np[i]], (shortest_distance_np[i], url_indices[i]))
 
                 self.__cut_down_prriority_queues()
-                stop = time.time()
-                duration_batch = (stop-start)/self.batch_size_meta
                 if j % 100 == 0:
                     print("Iteration number " + str(j))
-                    print(duration_batch)
                 j += 1
+            stop = time.time()
+            duration_batch = (stop-start)/self.batch_size_meta
+            print("Duration")
+            print(duration_batch)
+
+    
     
 
     def __cut_down_prriority_queues(self):
