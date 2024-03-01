@@ -7,7 +7,6 @@ import pyarrow.parquet as pq
 import heapq
 import time
 
-
 class DatasetMetaData(Dataset):
     def __init__(self, dataframe, tokenizer, batch_size):
         self.dataframe = dataframe
@@ -41,7 +40,7 @@ class Laion400mDataset(Dataset):
         self.model.to(self.device)
         self.tokenizer = open_clip.get_tokenizer(model)
         with torch.no_grad():
-            self.caption_features_targets = self.model.encode_text(self.tokenizer(self.captions)) #this is a matrix of dimension Nx(dimension feature embedding)
+            self.caption_features_targets = self.model.encode_text(self.tokenizer(self.captions).to(self.device)) #this is a matrix of dimension Nx(dimension feature embedding)
             self.caption_features_targets /= self.caption_features_targets.norm(dim=-1, keepdim=True)
 
     def __initialize_priority_queue(self):
