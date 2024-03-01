@@ -32,8 +32,7 @@ class DatasetMetaData(Dataset):
         
         caption = self.current_slice.iloc[idx_within_batch]['caption']
         if caption is None:
-            print("Index: " + str(idx_within_batch))
-            print(caption)
+            return "", idx
         return caption, idx 
 
 
