@@ -75,6 +75,7 @@ class Laion400mDataset(Dataset):
 
     def __collect_urls(self, meta_data_files: list):
         for i, input_file in enumerate(meta_data_files):
+            print("File_number " + str(i))
             self.__collect_urls_file(meta_data_file=input_file)
 
     def __collect_urls_file(self, meta_data_file):
@@ -114,7 +115,6 @@ class Laion400mDataset(Dataset):
                 index_shortest_distance_np = index_shortest_distance.to("cpu").numpy() #welche priority queue
                 url_indices = batch[1] #welcher value in der priority
                 for i in range(shortest_distance_np.shape[0]):
-                    print(shortest_distance_np[i])
                     if(
                         (len(self.priority_queues[index_shortest_distance_np[i]]) < 
                         self.num_elements_per_caption) or 
@@ -127,6 +127,7 @@ class Laion400mDataset(Dataset):
                 stop = time.time()
                 duration_batch = (stop-start)/self.batch_size_meta
                 if(i % 100 == 0):
+                    print("Iteration number " + str(i))
                     print(duration_batch)    
 
     def __cut_down_prriority_queues(self):
