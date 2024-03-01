@@ -105,7 +105,7 @@ class Laion400mDataset(Dataset):
 
     def __updatePriorityQueue(self, dataloader: DataLoader):
         with torch.no_grad():
-            i = 0
+            j = 0
             for batch in dataloader:
                 start = time.time()
                 caption_tokens = batch[0].to(self.device)
@@ -129,9 +129,11 @@ class Laion400mDataset(Dataset):
                 self.__cut_down_prriority_queues()
                 stop = time.time()
                 duration_batch = (stop-start)/self.batch_size_meta
-                if i % 100 == 0:
+                if j % 100 == 0:
                     print("Iteration number " + str(i))
-                    print(duration_batch)    
+                    print(duration_batch)
+                j += 1
+    
 
     def __cut_down_prriority_queues(self):
         for i in range(len(self.priority_queues)):
@@ -165,7 +167,7 @@ class Laion400mDataset(Dataset):
         pass
 
 def main():
-    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=10000, num_workers=6)   
+    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=3, num_workers=0)   
 
 
 if __name__ == "__main__":
