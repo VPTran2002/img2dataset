@@ -16,24 +16,24 @@ class DatasetMetaData(Dataset):
         self.total_rows = len(dataframe)
         self.num_batches = (self.total_rows + self.batch_size - 1) // self.batch_size
         self.batch_start = -1
-        self.current_slice = None#self.dataframe.to_pandas()
+        self.current_slice = self.dataframe.to_pandas()
 
     def __len__(self):
         return self.total_rows
 
     def __getitem__(self, idx):
-        batch_idx = idx // self.batch_size
-        batch_start = batch_idx * self.batch_size
-        idx_within_batch = idx - batch_start
+        #batch_idx = idx // self.batch_size
+        #batch_start = batch_idx * self.batch_size
+        #idx_within_batch = idx - batch_start
 
-        if batch_start != self.batch_start:
-            self.batch_start = batch_start
-            batch_end = min(batch_start + self.batch_size, self.total_rows)
-            self.current_slice = self.dataframe.slice(batch_start, batch_end-batch_start).to_pandas()
+        #if batch_start != self.batch_start:
+        #    self.batch_start = batch_start
+        #    batch_end = min(batch_start + self.batch_size, self.total_rows)
+        #    self.current_slice = self.dataframe.slice(batch_start, batch_end-batch_start).to_pandas()
         
         #caption = self.current_slice[idx_within_batch]
-        caption = self.current_slice.iloc[idx_within_batch]['caption']
-        #caption = self.current_slice.iloc[idx]['caption']
+        #caption = self.current_slice.iloc[idx_within_batch]['caption']
+        caption = self.current_slice.iloc[idx]['caption']
         if caption is None:
             return "", idx
         return caption, idx 
@@ -182,7 +182,7 @@ class Laion400mDataset(Dataset):
         pass
 
 def main():
-    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=512, num_workers=9)   
+    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=2048, num_workers=9)   
 
 
 if __name__ == "__main__":
