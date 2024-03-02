@@ -89,7 +89,8 @@ class Laion400mDataset(Dataset):
         def collate_fn(batch):
             with torch.no_grad():
                 caption, idx = zip(*batch)
-                print(caption)
+                if self.k % 20 == 0:
+                    print(self.k)
                 return self.tokenizer(caption), idx
         dataloader = DataLoader(dataset_url_cap, batch_size=self.batch_size_meta, shuffle=False, collate_fn=collate_fn, num_workers=self.num_workers)#self.num_workers)
         self.__updatePriorityQueue(dataloader)
@@ -162,6 +163,7 @@ class Laion400mDataset(Dataset):
         self.num_elements_per_caption = num_elements_per_caption
         self.batch_size_meta = batch_size_meta
         self.num_workers = num_workers
+        self.k = 0
         
         self.__initialize_model(model, pretrained)
         self.__initialize_priority_queue()    
