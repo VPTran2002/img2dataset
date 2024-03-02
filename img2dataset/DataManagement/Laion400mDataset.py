@@ -88,6 +88,7 @@ class Laion400mDataset(Dataset):
         df = self.__rename_cols_in_pyarrow_table(df)
         list_df = self.__divide_dataset_into_1m_shards(df)
         for i in range(len(list_df)):
+            print("Shard number: " + str(i))
             dataset_url_cap = DatasetMetaData(list_df[i], self.tokenizer, self.batch_size_meta)
             def collate_fn(batch):
                 with torch.no_grad():
@@ -104,7 +105,6 @@ class Laion400mDataset(Dataset):
             batch_start = i * 500000
             batch_end = min(batch_start + 500000, len_dataset)
             shard = df.slice(batch_start, batch_end-batch_start)
-            print(len(shard))
             list_datasets.append(shard)
         return list_datasets    
 
@@ -122,7 +122,6 @@ class Laion400mDataset(Dataset):
     def __updatePriorityQueue(self, dataloader: DataLoader):
         with torch.no_grad():
             j = 0
-            print("Start")
             start = time.time()
             for batch in dataloader:
                 caption_tokens = batch[0].to(self.device)
@@ -144,9 +143,6 @@ class Laion400mDataset(Dataset):
                         heapq.heappush(self.priority_queues[index_shortest_distance_np[i]], (shortest_distance_np[i], url_indices[i]))
 
                 self.__cut_down_prriority_queues()
-                if j % 100 == 0:
-                    print("Iteration number " + str(j))
-                j += 1
             stop = time.time()
             duration_batch = (stop-start)/self.batch_size_meta
             print("Duration")
