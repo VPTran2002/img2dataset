@@ -89,7 +89,7 @@ class Laion400mDataset(Dataset):
         def collate_fn(batch):
             with torch.no_grad():
                 caption, idx = zip(*batch)
-                if self.k % 20 == 0:
+                if self.k % 100 == 0:
                     print(self.k)
                 return self.tokenizer(caption), idx
         dataloader = DataLoader(dataset_url_cap, batch_size=self.batch_size_meta, shuffle=False, collate_fn=collate_fn, num_workers=self.num_workers)#self.num_workers)
