@@ -29,7 +29,7 @@ class DatasetMetaData(Dataset):
         if batch_start != self.batch_start:
             self.batch_start = batch_start
             batch_end = min(batch_start + self.batch_size, self.total_rows)
-            self.current_slice = self.dataframe.slice(batch_start, batch_end).to_pandas()
+            self.current_slice = self.dataframe.slice(batch_start, batch_end-batch_start).to_pandas()
         
         #caption = self.current_slice[idx_within_batch]
         caption = self.current_slice.iloc[idx_within_batch]['caption']
@@ -86,15 +86,27 @@ class Laion400mDataset(Dataset):
     def __collect_urls_file(self, meta_data_file):
         df = self.__download_meta_to_pyarrow_table(meta_data_file)
         df = self.__rename_cols_in_pyarrow_table(df)
-        dataset_url_cap = DatasetMetaData(df, self.tokenizer, self.batch_size_meta)
-        def collate_fn(batch):
-            with torch.no_grad():
-                caption, idx = zip(*batch)
-                if idx[0] % (self.batch_size_meta*100) == 0:
-                    print(idx[0])
-                return self.tokenizer(caption), idx
-        dataloader = DataLoader(dataset_url_cap, batch_size=self.batch_size_meta, shuffle=False, collate_fn=collate_fn, num_workers=self.num_workers)#self.num_workers)
-        self.__updatePriorityQueue(dataloader)
+        list_df = self.__divide_dataset_into_1m_shards(df)
+        for i in range(len(list_df)):
+            dataset_url_cap = DatasetMetaData(list_df[i], self.tokenizer, self.batch_size_meta)
+            def collate_fn(batch):
+                with torch.no_grad():
+                    caption, idx = zip(*batch)
+                    return self.tokenizer(caption), idx
+            dataloader = DataLoader(dataset_url_cap, batch_size=self.batch_size_meta, shuffle=False, collate_fn=collate_fn, num_workers=self.num_workers)#self.num_workers)
+            self.__updatePriorityQueue(dataloader)
+
+    def __divide_dataset_into_1m_shards(self, df):
+        list_datasets = []
+        len_dataset = len(df)
+        len_shard = (len_dataset + 499999)//500000
+        for i in range(len_shard):
+            batch_start = i * 500000
+            batch_end = min(batch_start + 500000, len_dataset)
+            shard = df.slice(batch_start, batch_end-batch_start)
+            print(len(shard))
+            list_datasets.append(shard)
+        return list_datasets    
 
     def __rename_cols_in_pyarrow_table(self, df):
         column_names = ['url', 'caption']
@@ -112,7 +124,7 @@ class Laion400mDataset(Dataset):
             j = 0
             print("Start")
             start = time.time()
-            for batch in tqdm(dataloader):
+            for batch in dataloader:
                 caption_tokens = batch[0].to(self.device)
                 caption_features = self.model.encode_text(caption_tokens)
                 caption_features = caption_features / caption_features.norm(dim=-1, keepdim=True)
