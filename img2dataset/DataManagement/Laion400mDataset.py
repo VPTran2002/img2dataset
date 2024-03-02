@@ -182,7 +182,7 @@ class Laion400mDataset(Dataset):
         pass
 
 def main():
-    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=2048, num_workers=9)   
+    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=2048, num_workers=12)   
 
 
 if __name__ == "__main__":
