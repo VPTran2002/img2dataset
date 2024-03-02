@@ -28,10 +28,10 @@ class DatasetMetaData(Dataset):
         if batch_start != self.batch_start:
             self.batch_start = batch_start
             batch_end = min(batch_start + self.batch_size, self.total_rows)
-            self.current_slice = self.dataframe.slice(batch_start, batch_end).column('caption').to_numpy()
+            self.current_slice = self.dataframe.slice(batch_start, batch_end).to_pandas()
         
-        caption = self.current_slice[idx_within_batch]
-        #caption = self.current_slice.iloc[idx_within_batch]['caption']
+        #caption = self.current_slice[idx_within_batch]
+        caption = self.current_slice.iloc[idx_within_batch]['caption']
         #caption = self.current_slice.iloc[idx]['caption']
         if caption is None:
             return "", idx
@@ -171,7 +171,7 @@ class Laion400mDataset(Dataset):
         pass
 
 def main():
-    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=2048, num_workers=13)   
+    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=8192, num_workers=13)   
 
 
 if __name__ == "__main__":
