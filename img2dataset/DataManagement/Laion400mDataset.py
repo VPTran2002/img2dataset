@@ -6,6 +6,7 @@ import open_clip
 import pyarrow.parquet as pq
 import heapq
 import time
+import tqdm
 
 class DatasetMetaData(Dataset):
     def __init__(self, dataframe, tokenizer, batch_size):
@@ -111,7 +112,7 @@ class Laion400mDataset(Dataset):
             j = 0
             print("Start")
             start = time.time()
-            for batch in dataloader:
+            for batch in tqdm(dataloader):
                 caption_tokens = batch[0].to(self.device)
                 caption_features = self.model.encode_text(caption_tokens)
                 caption_features = caption_features / caption_features.norm(dim=-1, keepdim=True)
