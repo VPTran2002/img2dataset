@@ -136,8 +136,6 @@ class Laion400mDataset(Dataset):
             duration_batch = (stop-start)/self.batch_size_meta
             print("Duration")
             print(duration_batch)
-
-    
     
 
     def __cut_down_prriority_queues(self):
@@ -172,7 +170,7 @@ class Laion400mDataset(Dataset):
         pass
 
 def main():
-    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=4096, num_workers=8)   
+    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=8192, num_workers=8)   
 
 
 if __name__ == "__main__":
