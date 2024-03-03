@@ -22,17 +22,6 @@ class DatasetMetaData(Dataset):
         return self.total_rows
 
     def __getitem__(self, idx):
-        #batch_idx = idx // self.batch_size
-        #batch_start = batch_idx * self.batch_size
-        #idx_within_batch = idx - batch_start
-
-        #if batch_start != self.batch_start:
-        #    self.batch_start = batch_start
-        #    batch_end = min(batch_start + self.batch_size, self.total_rows)
-        #    self.current_slice = self.dataframe.slice(batch_start, batch_end-batch_start).to_pandas()
-        
-        #caption = self.current_slice[idx_within_batch]
-        #caption = self.current_slice.iloc[idx_within_batch]['caption']
         caption = self.current_slice.iloc[idx]['caption']
         if caption is None:
             return "", idx
@@ -87,13 +76,13 @@ class Laion400mDataset(Dataset):
         df = self.__download_meta_to_pyarrow_table(meta_data_file)
         df = self.__rename_cols_in_pyarrow_table(df)
         list_df = self.__divide_dataset_into_1m_shards(df)
+        def collate_fn(batch):
+            with torch.no_grad():
+                caption, idx = zip(*batch)
+                return self.tokenizer(caption), idx        
         for i in range(len(list_df)):
             print("Shard number: " + str(i))
             dataset_url_cap = DatasetMetaData(list_df[i], self.tokenizer, self.batch_size_meta)
-            def collate_fn(batch):
-                with torch.no_grad():
-                    caption, idx = zip(*batch)
-                    return self.tokenizer(caption), idx
             dataloader = DataLoader(dataset_url_cap, batch_size=self.batch_size_meta, shuffle=False, collate_fn=collate_fn, num_workers=self.num_workers)#self.num_workers)
             self.__updatePriorityQueue(dataloader)
 
@@ -182,7 +171,7 @@ class Laion400mDataset(Dataset):
         pass
 
 def main():
-    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=2048, num_workers=15)   
+    l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=2048, num_workers=20)   
 
 
 if __name__ == "__main__":
