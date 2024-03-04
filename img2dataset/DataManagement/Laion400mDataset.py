@@ -166,12 +166,17 @@ class Laion400mDataset(Dataset):
         def collate_fn(batch):
             with torch.no_grad():
                 caption, url = zip(*batch)
-                return self.tokenizer(caption), url        
+                return self.tokenizer(caption), url
+        print("Number of shards: " + str(len(list_df)))        
         for i in range(len(list_df)):
+            start = time.time()
             print("Shard number: " + str(i))
             dataset_url_cap = DatasetMetaData(list_df[i], self.tokenizer, self.batch_size_meta)
             dataloader = DataLoader(dataset_url_cap, batch_size=self.batch_size_meta, shuffle=False, collate_fn=collate_fn, num_workers=self.num_workers)#self.num_workers)
             self.__updatePriorityQueue(dataloader)
+            stop = time.time()
+            print("Duration shard " + str(stop-start))
+            print("Total time in minutes" + str((stop-start)*len(list_df)*(1/1000)/60))
 
             
     def __save_priority_queue(self, filenumber):
@@ -242,10 +247,7 @@ class Laion400mDataset(Dataset):
                         (shortest_distance_np[i] > 
                         self.priority_queues[index_shortest_distance_np[i]][0][0])):
 
-                        heapq.heappush(self.priority_queues[index_shortest_distance_np[i]], (shortest_distance_np[i], urls[i], self.tokenizer.decode(caption_tokens[i].cpu().numpy())))
-                if(j % 3 == 0):
-                    print(j)
-                j = j + 1            
+                        heapq.heappush(self.priority_queues[index_shortest_distance_np[i]], (shortest_distance_np[i], urls[i], self.tokenizer.decode(caption_tokens[i].cpu().numpy())))           
                 self.__cut_down_prriority_queues()
 
             stop = time.time()
@@ -331,6 +333,9 @@ class Laion400mDataset(Dataset):
         self.priority_queue_save_path = priority_queue_save_path
         self.thread_count = thread_count
         self.timeout = timeout
+        print("batch_size: " + str(batch_size_meta))
+        print("shard size " + str(shard_size))
+        print("num_workers " + str(num_workers))
         
         self.__initialize_model(model, pretrained)
         self.__initialize_priority_queue()    
@@ -342,7 +347,7 @@ class Laion400mDataset(Dataset):
         self.__download_urls()
 
 def main():
-        l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=256, num_workers=24, shard_size=10000, thread_count=10)
+        l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=256, num_workers=16, shard_size=10000, thread_count=10)
 
 if __name__ == "__main__":
     main()    
