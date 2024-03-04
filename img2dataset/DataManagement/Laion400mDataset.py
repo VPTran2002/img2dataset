@@ -179,6 +179,8 @@ class Laion400mDataset(Dataset):
             duration = timedelta(seconds=elapsed_time)
             duration_whole = timedelta(seconds=elapsed_time*list_df)
             print("Duration shard ", duration)
+            print("Duration whole ", duration_whole)
+
             
     def __save_priority_queue(self, filenumber):
         self.__create_output_directory(self.priority_queue_save_path)
