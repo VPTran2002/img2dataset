@@ -345,7 +345,7 @@ class Laion400mDataset(Dataset):
         self.__download_urls()
 
 def main():
-        l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=256, num_workers=2, shard_size=100000, thread_count=10)
+        l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=256, num_workers=2, shard_size=500000, thread_count=10)
 
 if __name__ == "__main__":
     main()    
