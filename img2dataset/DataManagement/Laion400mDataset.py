@@ -243,7 +243,7 @@ class Laion400mDataset(Dataset):
                         self.priority_queues[index_shortest_distance_np[i]][0][0])):
 
                         heapq.heappush(self.priority_queues[index_shortest_distance_np[i]], (shortest_distance_np[i], urls[i], self.tokenizer.decode(caption_tokens[i].cpu().numpy())))
-                if(j % 50 == 0):
+                if(j % 3 == 0):
                     print(j)
                 j = j + 1            
                 self.__cut_down_prriority_queues()
