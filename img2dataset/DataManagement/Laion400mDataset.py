@@ -7,6 +7,7 @@ import pyarrow.parquet as pq
 import pyarrow as pa
 import heapq
 import time
+from datetime import timedelta
 import pickle
 import requests
 import cv2
@@ -169,15 +170,13 @@ class Laion400mDataset(Dataset):
                 return self.tokenizer(caption), url
         print("Number of shards: " + str(len(list_df)))        
         for i in range(len(list_df)):
-            start = time.time()
+            start = time.perf_counter()
             print("Shard number: " + str(i))
             dataset_url_cap = DatasetMetaData(list_df[i], self.tokenizer, self.batch_size_meta)
             dataloader = DataLoader(dataset_url_cap, batch_size=self.batch_size_meta, shuffle=False, collate_fn=collate_fn, num_workers=self.num_workers)#self.num_workers)
             self.__updatePriorityQueue(dataloader)
-            stop = time.time()
-            print("Duration shard " + str(stop-start))
-            print("Total time in minutes" + str((stop-start)*len(list_df)*(1/1000)/60))
-
+            duration = timedelta(seconds=time.perf_counter()-start)
+            print("Duration shard ", duration)
             
     def __save_priority_queue(self, filenumber):
         self.__create_output_directory(self.priority_queue_save_path)
