@@ -175,7 +175,9 @@ class Laion400mDataset(Dataset):
             dataset_url_cap = DatasetMetaData(list_df[i], self.tokenizer, self.batch_size_meta)
             dataloader = DataLoader(dataset_url_cap, batch_size=self.batch_size_meta, shuffle=False, collate_fn=collate_fn, num_workers=self.num_workers)#self.num_workers)
             self.__updatePriorityQueue(dataloader)
-            duration = timedelta(seconds=time.perf_counter()-start)
+            elapsed_time = time.perf_counter()-start
+            duration = timedelta(seconds=elapsed_time)
+            duration_whole = timedelta(seconds=elapsed_time*list_df)
             print("Duration shard ", duration)
             
     def __save_priority_queue(self, filenumber):
@@ -228,7 +230,6 @@ class Laion400mDataset(Dataset):
     def __updatePriorityQueue(self, dataloader: DataLoader):
         with torch.no_grad():
             j = 0
-            start = time.time()
             for batch in dataloader:
                 caption_tokens = batch[0].to(self.device)
                 caption_features = self.model.encode_text(caption_tokens)
@@ -248,10 +249,6 @@ class Laion400mDataset(Dataset):
 
                         heapq.heappush(self.priority_queues[index_shortest_distance_np[i]], (shortest_distance_np[i], urls[i], self.tokenizer.decode(caption_tokens[i].cpu().numpy())))           
                 self.__cut_down_prriority_queues()
-
-            stop = time.time()
-            duration_single_example = (stop-start)/self.shard_size
-            print("Duration " + str(duration_single_example))
     
 
     def __cut_down_prriority_queues(self):
