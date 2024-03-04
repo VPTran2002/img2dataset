@@ -177,7 +177,7 @@ class Laion400mDataset(Dataset):
             self.__updatePriorityQueue(dataloader)
             elapsed_time = time.perf_counter()-start
             duration = timedelta(seconds=elapsed_time)
-            duration_whole = timedelta(seconds=elapsed_time*list_df)
+            duration_whole = timedelta(seconds=elapsed_time*len(list_df))
             print("Duration shard ", duration)
             print("Duration whole ", duration_whole)
 
