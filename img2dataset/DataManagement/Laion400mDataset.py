@@ -86,6 +86,7 @@ class Laion400mDataset(Dataset):
     def __initialize_model(self, model, pretrained):
         self.model, _, _ = open_clip.create_model_and_transforms(model, pretrained=pretrained)
         if torch.cuda.device_count() > 1:
+            print(f"{torch.cuda.device_count()} GPUs are used")
             model = nn.DataParallel(model)
         self.model.to(self.device)
         self.tokenizer = open_clip.get_tokenizer(model)
