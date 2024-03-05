@@ -16,6 +16,7 @@ import albumentations as A
 from multiprocessing.pool import ThreadPool
 from threading import Semaphore
 from writer import WebDatasetSampleWriter
+import torch.nn as nn
 
 
 def resize_img(img):
@@ -84,6 +85,8 @@ class DatasetMetaData(Dataset):
 class Laion400mDataset(Dataset):
     def __initialize_model(self, model, pretrained):
         self.model, _, _ = open_clip.create_model_and_transforms(model, pretrained=pretrained)
+        if torch.cuda.device_count() > 1:
+            model = nn.DataParallel(model)
         self.model.to(self.device)
         self.tokenizer = open_clip.get_tokenizer(model)
         with torch.no_grad():
@@ -318,7 +321,7 @@ class Laion400mDataset(Dataset):
                 captions: list = ["a dog", "a cat", "an airplane"],
                 shard_size: int = 500000, priority_queue_save_path: str = "prqueue"):
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.columns_to_read = ["URL", "TEXT"]
         self.input_format = "parquet"
         self.output_format = "webdataset"
