@@ -84,14 +84,21 @@ class DatasetMetaData(Dataset):
 
 class Laion400mDataset(Dataset):
     def __initialize_model(self, model, pretrained):
+        class TextEncoder(nn.Module):
+            def __init__(self, model):
+                super().__init__()
+                self.model = model
+            def forward(self, input):
+                return self.model.encode_text(input)
         self.model, _, _ = open_clip.create_model_and_transforms(model, pretrained=pretrained)
+        self.text_encoder = TextEncoder(self.model)          
         if torch.cuda.device_count() > 1:
             print(f"{torch.cuda.device_count()} GPUs are used")
-            self.model = nn.DataParallel(self.model)
-        self.model.to(self.device)
+            self.text_encoder = nn.DataParallel(self.text_encoder)
+        self.text_encoder.to(self.device)
         self.tokenizer = open_clip.get_tokenizer(model)
         with torch.no_grad():
-            self.caption_features_targets = self.model.encode_text(self.tokenizer(self.captions).to(self.device)) #this is a matrix of dimension Nx(dimension feature embedding)
+            self.caption_features_targets = self.text_encoder(self.tokenizer(self.captions).to(self.device)) #this is a matrix of dimension Nx(dimension feature embedding)
             self.caption_features_targets /= self.caption_features_targets.norm(dim=-1, keepdim=True)
 
     def __initialize_priority_queue(self):
@@ -238,7 +245,7 @@ class Laion400mDataset(Dataset):
             j = 0
             for batch in dataloader:
                 caption_tokens = batch[0].to(self.device)
-                caption_features = self.model.encode_text(caption_tokens)
+                caption_features = self.text_encoder(caption_tokens)
                 caption_features = caption_features / caption_features.norm(dim=-1, keepdim=True)
                 #calculate distances
                 distances = caption_features @ self.caption_features_targets.T
