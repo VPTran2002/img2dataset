@@ -371,7 +371,7 @@ class Downloader():
         self.__download_urls()
 
 def main():
-        l = Downloader(num_elements_per_caption=666667, batch_size_meta=8192, num_workers=12, shard_size=200000, thread_count=320)
+        l = Downloader(num_elements_per_caption=666667, batch_size_meta=8192, num_workers=24, shard_size=200000, thread_count=320)
 
 if __name__ == "__main__":
     main()    
