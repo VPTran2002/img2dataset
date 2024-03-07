@@ -113,7 +113,7 @@ class Downloader():
                 list_full_captions_features /= list_full_captions_features.norm(dim=-1, keepdim=True)
                 average += list_full_captions_features
             
-        self.caption_features_targets = (average/n).norm(dim=-1, keepdim=True)
+        self.caption_features_targets = average/average.norm(dim=-1, keepdim=True)
         #self.caption_features_targets = self.text_encoder(self.tokenizer(self.captions).to(self.device)) #this is a matrix of dimension Nx(dimension feature embedding)
         #self.caption_features_targets /= self.caption_features_targets.norm(dim=-1, keepdim=True)
 
@@ -259,15 +259,15 @@ class Downloader():
                 caption_features = caption_features / caption_features.norm(dim=-1, keepdim=True)
                 #calculate distances
                 distances = caption_features @ self.caption_features_targets.T
-                shortest_distance, index_shortest_distance = distances.min(dim=-1)
-                shortest_distance_np = -shortest_distance.to("cpu").numpy() # welche priorität
+                shortest_distance, index_shortest_distance = distances.max(dim=-1)
+                shortest_distance_np = shortest_distance.to("cpu").numpy() # welche priorität
                 index_shortest_distance_np = index_shortest_distance.to("cpu").numpy() #welche priority queue
                 urls = batch[1] #welcher value in der priority
                 for i in range(shortest_distance_np.shape[0]):
                     if(
                         (len(self.priority_queues[index_shortest_distance_np[i]]) < 
                         self.num_elements_per_caption) or 
-                        (shortest_distance_np[i] > 
+                        (shortest_distance_np[i] < 
                         self.priority_queues[index_shortest_distance_np[i]][0][0])):
 
                         heapq.heappush(self.priority_queues[index_shortest_distance_np[i]], (shortest_distance_np[i], urls[i], self.tokenizer.decode(caption_tokens[i].cpu().numpy())))           
@@ -336,7 +336,7 @@ class Downloader():
                 thread_count: int = 1, image_size: int = 256, timeout: int = 10,
                 model: str = 'ViT-B-32', pretrained: str = './DownloadedModels/Model-B-32_Data-400M_Samples-34B_lr-5e-4_bs-32k.pt',
                 captions: list = ["bird", "car", "chair", "dog", #VLCS: bird, car, chair, dog, person
-                "an elephant", "giraffe", "guitar", "horse", "house", "person"], #PACS: dog, elephant, giraffe, guitar, horse, house, person
+                "elephant", "giraffe", "guitar", "horse", "house", "person"], #PACS: dog, elephant, giraffe, guitar, horse, house, person
                 templates: list = ["a photo of a {}", "a picture of a {}", "a photo of my {}", "I love my {}", "This is a {}"],
                 shard_size: int = 500000, priority_queue_save_path: str = "prqueue", number_save_files: str = 3):
 
@@ -372,6 +372,7 @@ class Downloader():
 
 def main():
         l = Downloader(num_elements_per_caption=666667, batch_size_meta=8192, num_workers=24, shard_size=200000, thread_count=320)
+        #l = Downloader(num_elements_per_caption=666667, batch_size_meta=2, num_workers=0, shard_size=8, thread_count=10)
 
 if __name__ == "__main__":
     main()    
