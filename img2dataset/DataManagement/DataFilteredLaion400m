@@ -1,0 +1,42 @@
+from torch.utils.data import Dataset, DataLoader
+from DataHelper import make_path_absolute
+import fsspec
+import pickle
+import open_clip
+from PIL import Image
+
+
+#Important note: before wrapping a Dataloader around this Dataset it is necessary to implement the collate function of the Dataloader
+class DatasetFilteredLaion400m(Dataset):
+
+    def __init__(self, folder_with_data: str, model: str = "ViT-B-32", transform=None):
+        super().__init__()
+        url_caption_path = make_path_absolute(folder_with_data)
+        self.folder_with_data = make_path_absolute(folder_with_data)
+        fs, self.url_caption_path = fsspec.core.url_to_fs(url_caption_path)
+        url_caption_path = f"{self.url_caption_path}/final_label_list.pkl"
+        self.tokenizer = open_clip.get_tokenizer(model)
+        if fs.exists(url_caption_path):
+            with fs.open(url_caption_path, 'rb') as f:
+                self.url_caption_data = pickle.load(f)
+        self.total_length = len(self.url_caption_data)
+        self.transform=transform
+        
+    def __len__(self):
+        return self.total_length
+
+    def __getitem__(self, index):
+        nearest_class, path_caption = self.url_caption_data[index]
+        with open(path_caption[0], 'rb') as f:
+            image = Image.open(f)
+            image = image.convert('RGB')
+        if self.transform:
+            image = self.transform(image)
+        return image, nearest_class, path_caption[1]
+
+def main():
+    dataset = DatasetFilteredLaion400m(folder_with_data="data")
+    dataset[1]
+
+if __name__ == "__main__":
+    main()            

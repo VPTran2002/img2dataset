@@ -15,8 +15,8 @@ import numpy as np
 import albumentations as A
 from multiprocessing.pool import ThreadPool
 from threading import Semaphore
-from writer import WebDatasetSampleWriter
 import torch.nn as nn
+import random
 
 
 def resize_img(img):
@@ -35,26 +35,33 @@ def resize_img(img):
     )
     return img
 
-def download_resize(dist_url_caption, timeout, semaphore):
+def make_path_absolute(path):
+    fs, p = fsspec.core.url_to_fs(path)
+    if fs.protocol == "file":
+        return os.path.abspath(p)
+    return path    
+
+def download_resize_write(key_dist_url_caption, timeout, semaphore, output_dir_class):
     try:
         # Download image
         user_agent_string = "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:72.0) Gecko/20100101 Firefox/72.0"
         headers={"User-Agent": user_agent_string}
-        print(dist_url_caption[1])
-        response = requests.get(dist_url_caption[1], timeout=timeout, headers=headers)
+        print(key_dist_url_caption[1])
+        response = requests.get(key_dist_url_caption[1], timeout=timeout, headers=headers)
         if response.status_code == 200:
             # Decode image
             img = cv2.imdecode(np.frombuffer(response.content, np.uint8), cv2.IMREAD_UNCHANGED)
             # Resize image
             resized_img = resize_img(img)
             #write image to destination
-            encode_format = "jpg"
-            img_str = cv2.imencode(f".{encode_format}", resized_img, params=[int(cv2.IMWRITE_JPEG_QUALITY), 95])[1].tobytes()
+            output_file_path = f'data/{output_dir_class}/{key_dist_url_caption[0]}.jpg'
+            output_file_path = make_path_absolute(output_file_path).replace("\\", "/")
+            cv2.imwrite(output_file_path, resized_img)
             semaphore.release()
-            return img_str, dist_url_caption[2]
+            return None, None
         else:
             semaphore.release()
-            print(f"Failed to download image from {dist_url_caption[1]}. Status code: {response.status_code}")
+            print(f"Failed to download image from {key_dist_url_caption[1]}. Status code: {response.status_code}")
             return None, None
     except Exception as e:
         print(f"An error occurred: {str(e)}")
@@ -63,34 +70,31 @@ def download_resize(dist_url_caption, timeout, semaphore):
 
 
 class DatasetMetaData(Dataset):
-    def __init__(self, dataframe, tokenizer, batch_size):
+    def __init__(self, dataframe):
         self.dataframe = dataframe
-        self.tokenizer = tokenizer
-        self.batch_size = batch_size
         self.total_rows = len(dataframe)
-        self.num_batches = (self.total_rows + self.batch_size - 1) // self.batch_size
-        self.batch_start = -1
-        self.current_slice = self.dataframe.to_pandas()
+        self.dataframe = self.dataframe.to_pandas()
 
     def __len__(self):
         return self.total_rows
 
     def __getitem__(self, idx):
-        caption = self.current_slice.iloc[idx]['caption']
-        url = self.current_slice.iloc[idx]['url']
+        caption = self.dataframe.iloc[idx]['caption']
+        url = self.dataframe.iloc[idx]['url']
         if caption is None:
             return "", url
         return caption, url 
 
-class Laion400mDataset(Dataset):
-    def __initialize_model(self, model, pretrained):
+class Downloader():
+
+    def __initialize_model(self, model):
         class TextEncoder(nn.Module):
             def __init__(self, model):
                 super().__init__()
                 self.model = model
             def forward(self, input):
                 return self.model.encode_text(input)
-        self.model, _, _ = open_clip.create_model_and_transforms(model, pretrained=pretrained)
+        self.model, _, _ = open_clip.create_model_and_transforms(model, pretrained=self.pretrained)
         self.text_encoder = TextEncoder(self.model)          
         if torch.cuda.device_count() > 1:
             print(f"{torch.cuda.device_count()} GPUs are used")
@@ -98,11 +102,23 @@ class Laion400mDataset(Dataset):
         self.text_encoder.to(self.device)
         self.tokenizer = open_clip.get_tokenizer(model)
         with torch.no_grad():
-            self.caption_features_targets = self.text_encoder(self.tokenizer(self.captions).to(self.device)) #this is a matrix of dimension Nx(dimension feature embedding)
-            self.caption_features_targets /= self.caption_features_targets.norm(dim=-1, keepdim=True)
+            n = len(self.templates)
+            average = torch.zeros((len(self.captions), self.text_encoder(self.tokenizer("Hallo").to(self.device)).shape[1])).to(self.device)
+            for i in range(n):
+                list_full_captions = []
+                for j in range(len(self.captions)):
+                    list_full_captions.append(self.templates[i].format(self.captions[j]))
+
+                list_full_captions_features = self.text_encoder(self.tokenizer(list_full_captions).to(self.device))
+                list_full_captions_features /= list_full_captions_features.norm(dim=-1, keepdim=True)
+                average += list_full_captions_features
+            
+        self.caption_features_targets = (average/n).norm(dim=-1, keepdim=True)
+        #self.caption_features_targets = self.text_encoder(self.tokenizer(self.captions).to(self.device)) #this is a matrix of dimension Nx(dimension feature embedding)
+        #self.caption_features_targets /= self.caption_features_targets.norm(dim=-1, keepdim=True)
 
     def __initialize_priority_queue(self):
-        prqueue = self.__make_path_absolute(self.priority_queue_save_path)
+        prqueue = make_path_absolute(self.priority_queue_save_path)
         fs, prqueue_path = fsspec.core.url_to_fs(prqueue)
         file_path_queue = f"{prqueue_path}/queue.pkl"
         if fs.exists(file_path_queue):
@@ -113,14 +129,8 @@ class Laion400mDataset(Dataset):
             for i in range(len(self.captions)):
                 self.priority_queues.append([])
 
-    def __make_path_absolute(self, path):
-        fs, p = fsspec.core.url_to_fs(path)
-        if fs.protocol == "file":
-            return os.path.abspath(p)
-        return path
-
     def __get_names_meta_data_files(self, pathToMeta):
-        pathToMeta = self.__make_path_absolute(pathToMeta)
+        pathToMeta = make_path_absolute(pathToMeta)
         fs, url_path = fsspec.core.url_to_fs(pathToMeta)
         self.fs = fs
         max = self.__get_max_input_file_filtered()
@@ -143,7 +153,7 @@ class Laion400mDataset(Dataset):
         return filtered_file_list
 
     def __get_max_input_file_filtered(self):
-        prqueue = self.__make_path_absolute(self.priority_queue_save_path)
+        prqueue = make_path_absolute(self.priority_queue_save_path)
         fs_queue, prqueue_path = fsspec.core.url_to_fs(prqueue)
         if not fs_queue.exists(prqueue_path):
             fs_queue.mkdir(prqueue_path)
@@ -159,11 +169,11 @@ class Laion400mDataset(Dataset):
 
 
     def __create_output_directory(self, output_folder):
-        self.output_folder = self.__make_path_absolute(output_folder)
+        self.output_folder = make_path_absolute(output_folder)
         fs, output_path = fsspec.core.url_to_fs(self.output_folder)
         if not fs.exists(output_path):
             fs.mkdir(output_path)
-        
+            
 
     def __collect_urls(self, meta_data_files: list, start_file: int):
         for i, input_file in enumerate(meta_data_files):
@@ -183,7 +193,7 @@ class Laion400mDataset(Dataset):
         for i in range(len(list_df)):
             start = time.perf_counter()
             print("Shard number: " + str(i))
-            dataset_url_cap = DatasetMetaData(list_df[i], self.tokenizer, self.batch_size_meta)
+            dataset_url_cap = DatasetMetaData(list_df[i])
             dataloader = DataLoader(dataset_url_cap, batch_size=self.batch_size_meta, shuffle=False, collate_fn=collate_fn, num_workers=self.num_workers)#self.num_workers)
             self.__updatePriorityQueue(dataloader)
             elapsed_time = time.perf_counter()-start
@@ -195,7 +205,7 @@ class Laion400mDataset(Dataset):
             
     def __save_priority_queue(self, filenumber):
         self.__create_output_directory(self.priority_queue_save_path)
-        prqueue = self.__make_path_absolute(self.priority_queue_save_path)
+        prqueue = make_path_absolute(self.priority_queue_save_path)
         #save priority queue
         fs, prqueue_path = fsspec.core.url_to_fs(prqueue)
         file_path_queue = f"{prqueue_path}/queue.pkl"
@@ -275,12 +285,29 @@ class Laion400mDataset(Dataset):
 
     def __download_urls(self):
         i = 0
+        final_label_list = []
         for url_caption_list in self.priority_queues:
-            self.__download_class(url_caption_list, i)
+            url_caption_list = [(k, tuple_url_caption[1], tuple_url_caption[2]) for k, tuple_url_caption in enumerate(url_caption_list)]
+            output_dir_class = make_path_absolute(f"data/{self.captions[i]}")
+            final_label_list.extend(self.__create_label_list(url_caption_list, i))
+            self.__create_output_directory(output_dir_class)
+            self.__download_class(url_caption_list, self.captions[i])
             i += 1
+        final_label_list_save = make_path_absolute('data')
+        #save priority queue
+        fs, final_label_list_save_path = fsspec.core.url_to_fs(final_label_list_save)
+        file_path_queue = f"{final_label_list_save_path}/final_label_list.pkl"
+        with fs.open(file_path_queue, 'wb') as f:
+            pickle.dump(final_label_list, f)    
+        
 
+    def __create_label_list(self, key_url_caption_list, i):
+        label_list = []
+        for key_url_caption in key_url_caption_list:
+            label_list.append((f"data/{self.captions[i]}/{key_url_caption[0]}.jpg", key_url_caption_list[2]))
+        return label_list
 
-    def __download_class(self, url_caption_list, class_number):   
+    def __download_class(self, url_caption_list, output_dir_class):   
         semaphore = Semaphore(self.thread_count * 2)
         def data_generator():
             for e in url_caption_list:
@@ -294,41 +321,26 @@ class Laion400mDataset(Dataset):
             schema.append(pa.field("caption", pa.string()))
             .append(pa.field("class", pa.string()))
         )
-        sample_writer = WebDatasetSampleWriter(
-            shard_id=class_number,
-            output_folder=self.output_folder,
-            save_caption=True,
-            oom_shard_count=len(self.captions),
-            schema=schema,
-            encode_format="jpg"
-        )
 
         with ThreadPool(self.thread_count) as thread_pool:
-            for img_str, caption in thread_pool.imap_unordered(lambda dist_url_caption: download_resize(dist_url_caption, self.timeout, semaphore=semaphore),loader):
-                try:
-                    if img_str is None:
-                        continue
-                    meta = {
-                        'caption': caption,
-                        'class': self.captions[class_number]
-                    }
-                    sample_writer.write(img_str, "None", caption, meta)
-                except Exception as e:
-                    print(f"Some error occured: {str(e)}")
+            for img_str, caption in thread_pool.imap_unordered(lambda dist_key_url_caption: download_resize_write(dist_key_url_caption, self.timeout, semaphore=semaphore, output_dir_class=output_dir_class),loader):
+                pass
 
-            sample_writer.close()
             thread_pool.terminate()
             thread_pool.join()
             del thread_pool                                                 
 
     def __init__(self, num_elements_per_caption: int, batch_size_meta: int, 
                 num_workers:int, output_folder: str = "laion400m-data", 
-                pathToMeta: str = "laion400m-meta", 
+                pathToMeta: str = "laion400m-meta",
                 thread_count: int = 1, image_size: int = 256, timeout: int = 10,
-                model: str = 'ViT-B-32', pretrained: str = 'laion400m_e32',
-                captions: list = ["a dog", "a cat", "an airplane"],
-                shard_size: int = 500000, priority_queue_save_path: str = "prqueue"):
+                model: str = 'ViT-B-32', pretrained: str = './DownloadedModels/Model-B-32_Data-400M_Samples-34B_lr-5e-4_bs-32k.pt',
+                captions: list = ["bird", "car", "chair", "dog", #VLCS: bird, car, chair, dog, person
+                "an elephant", "giraffe", "guitar", "horse", "house", "person"], #PACS: dog, elephant, giraffe, guitar, horse, house, person
+                templates: list = ["a photo of a {}", "a picture of a {}", "a photo of my {}", "I love my {}", "This is a {}"],
+                shard_size: int = 500000, priority_queue_save_path: str = "prqueue", number_save_files: str = 3):
 
+        random.seed(42)
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.columns_to_read = ["URL", "TEXT"]
         self.input_format = "parquet"
@@ -342,11 +354,14 @@ class Laion400mDataset(Dataset):
         self.priority_queue_save_path = priority_queue_save_path
         self.thread_count = thread_count
         self.timeout = timeout
+        self.pretrained = make_path_absolute(pretrained)
+        self.templates = templates
+        self.number_save_files = number_save_files
         print("batch_size: " + str(batch_size_meta))
         print("shard size " + str(shard_size))
         print("num_workers " + str(num_workers))
         
-        self.__initialize_model(model, pretrained)
+        self.__initialize_model(model)
         self.__initialize_priority_queue()    
         self.__create_output_directory(output_folder)
         meta_data_files, start_file = self.__get_names_meta_data_files(pathToMeta)
@@ -356,7 +371,7 @@ class Laion400mDataset(Dataset):
         self.__download_urls()
 
 def main():
-        l = Laion400mDataset(num_elements_per_caption=666667, batch_size_meta=4096, num_workers=12, shard_size=200000, thread_count=10)
+        l = Downloader(num_elements_per_caption=666667, batch_size_meta=8192, num_workers=12, shard_size=200000, thread_count=320)
 
 if __name__ == "__main__":
     main()    
