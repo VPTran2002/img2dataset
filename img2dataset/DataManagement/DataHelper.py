@@ -129,26 +129,26 @@ class Downloader():
             for i in range(len(self.captions)):
                 self.priority_queues.append([])
 
-    def __get_names_meta_data_files(self, pathToMeta):
+    def __get_names_meta_data_files(self, pathToMeta, meta_from_to):
         pathToMeta = make_path_absolute(pathToMeta)
         fs, url_path = fsspec.core.url_to_fs(pathToMeta)
         self.fs = fs
         max = self.__get_max_input_file_filtered()
         if fs.isdir(url_path):
             input_files = sorted(fs.glob(url_path + "/*." + self.input_format))
-            input_files = self.__filter_out_processed_files(input_files, max)
+            input_files = self.__filter_out_processed_non_relevant_files(input_files, max, meta_from_to)
         else:
             input_files = [url_path]
 
         start_file = max+1
         return input_files, start_file
 
-    def __filter_out_processed_files(self, file_list, max):
+    def __filter_out_processed_non_relevant_files(self, file_list, max, meta_from_to):
         filtered_file_list = []
         for path in file_list:
             name = path.split('/')[-1]
             number = int(name[5:10])
-            if number > max:
+            if number > max and number >= meta_from_to[0] and number <= meta_from_to[1]:
                  filtered_file_list.append(path)
         return filtered_file_list
 
@@ -335,6 +335,7 @@ class Downloader():
                 pathToMeta: str = "laion400m-meta",
                 thread_count: int = 1, image_size: int = 256, timeout: int = 10,
                 model: str = 'ViT-B-32', pretrained: str = './DownloadedModels/Model-B-32_Data-400M_Samples-34B_lr-5e-4_bs-32k.pt',
+                meta_from_to: tuple=(1,31),
                 captions: list = ["bird", "car", "chair", "dog", #VLCS: bird, car, chair, dog, person
                 "elephant", "giraffe", "guitar", "horse", "house", "person"], #PACS: dog, elephant, giraffe, guitar, horse, house, person
                 templates: list = ["a photo of a {}", "a picture of a {}", "a photo of my {}", "I love my {}", "This is a {}"],
@@ -360,18 +361,20 @@ class Downloader():
         print("batch_size: " + str(batch_size_meta))
         print("shard size " + str(shard_size))
         print("num_workers " + str(num_workers))
+        print("meta_from_to " + str(meta_from_to))
         
         self.__initialize_model(model)
         self.__initialize_priority_queue()    
         self.__create_output_directory(output_folder)
-        meta_data_files, start_file = self.__get_names_meta_data_files(pathToMeta)
+        meta_data_files, start_file = self.__get_names_meta_data_files(pathToMeta, meta_from_to)
+        print("meta_files " + str(meta_data_files))
         self.__collect_urls(meta_data_files, start_file)
         
         #now download everything
-        self.__download_urls()
+        #self.__download_urls()
 
 def main():
-        l = Downloader(num_elements_per_caption=666667, batch_size_meta=8192, num_workers=24, shard_size=200000, thread_count=320)
+        l = Downloader(num_elements_per_caption=666667, batch_size_meta=2048, num_workers=2, shard_size=200000, thread_count=48, meta_from_to=(1,4))
         #l = Downloader(num_elements_per_caption=666667, batch_size_meta=2, num_workers=0, shard_size=8, thread_count=10)
 
 if __name__ == "__main__":
