@@ -17,6 +17,7 @@ from multiprocessing.pool import ThreadPool
 from threading import Semaphore
 import torch.nn as nn
 import random
+import argparse
 
 
 def resize_img(img):
@@ -419,8 +420,15 @@ class Downloader():
         #self.__download_urls()
 
 def main():
-        l = Downloader(num_elements_per_caption=200000, priority_queue_save_path="prqueue1", meta_from_to=(1,4), batch_size_meta=2048, num_workers=2, shard_size=200000, thread_count=48)
-        #l = Downloader(num_elements_per_caption=666667, batch_size_meta=2, num_workers=0, shard_size=8, thread_count=10)
-
+        parser = argparse.ArgumentParser(description="Downloader script with command-line options")
+        parser.add_argument("--priority_queue_save_path", type=str, default="prqueue1", help="Path to save priority queue")
+        parser.add_argument("--meta_from", type=int, default=1, help="Start index for meta")
+        parser.add_argument("--meta_to", type=int, default=4, help="End index for meta")
+        args = parser.parse_args()    
+        l = Downloader(num_elements_per_caption=200000, 
+        priority_queue_save_path=args.priority_queue_save_path, 
+        meta_from_to=(args.meta_from, args.meta_to), 
+        batch_size_meta=2048, num_workers=2, shard_size=200000, thread_count=48)
+        
 if __name__ == "__main__":
     main()    
