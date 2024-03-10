@@ -179,14 +179,14 @@ class Downloader():
         pathToMeta = make_path_absolute(pathToMeta)
         fs, url_path = fsspec.core.url_to_fs(pathToMeta)
         self.fs = fs
-        max = self.__get_max_input_file_filtered()
+        maximum = self.__get_max_input_file_filtered()
         if fs.isdir(url_path):
             input_files = sorted(fs.glob(url_path + "/*." + self.input_format))
-            input_files = self.__filter_out_processed_non_relevant_files(input_files, max, meta_from_to)
+            input_files = self.__filter_out_processed_non_relevant_files(input_files, maximum, meta_from_to)
         else:
             input_files = [url_path]
 
-        start_file = max(max+1, meta_from_to[0])
+        start_file = max(maximum+1, meta_from_to[0])
         return input_files, start_file
 
     def __filter_out_processed_non_relevant_files(self, file_list, max, meta_from_to):
@@ -204,14 +204,14 @@ class Downloader():
         if not fs_queue.exists(prqueue_path):
             fs_queue.mkdir(prqueue_path)
         files = fs_queue.ls(prqueue_path)
-        max = 0
+        maximum = 0
         for file in files:
             name = file.split('/')[-1]
             if name.startswith("status"):
                 number_part = int(name[6:])
-                if number_part > max:
-                    max = number_part
-        return max            
+                if number_part > maximum:
+                    maximum = number_part
+        return maximum            
 
 
     def __create_output_directory(self, output_folder):
@@ -429,6 +429,6 @@ def main():
         priority_queue_save_path=args.priority_queue_save_path, 
         meta_from_to=(args.meta_from, args.meta_to), 
         batch_size_meta=2048, num_workers=2, shard_size=200000, thread_count=48)
-        
+
 if __name__ == "__main__":
     main()    
