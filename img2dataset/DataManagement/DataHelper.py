@@ -185,7 +185,7 @@ class Downloader():
         else:
             input_files = [url_path]
 
-        start_file = max(max, meta_from_to[0])+1
+        start_file = max(max+1, meta_from_to[0])
         return input_files, start_file
 
     def __filter_out_processed_non_relevant_files(self, file_list, max, meta_from_to):
