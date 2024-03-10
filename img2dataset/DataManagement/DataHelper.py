@@ -68,6 +68,52 @@ def download_resize_write(key_dist_url_caption, timeout, semaphore, output_dir_c
         semaphore.release()
         return None, None
 
+class Merger():
+    def __init__(self, prefix):
+        self.prefix = prefix
+
+    def __get_all_prqueue_paths(self, prefix):
+        current_folder = make_path_absolute(".")
+        fs_current, current_path = fsspec.core.url_to_fs(current_folder)
+        if not fs_current.exists(current_path):
+            fs_current.mkdir(current_path)
+        files = fs_current.ls(current_path)
+        list_prqueue_paths = []
+        for file in files:
+            name = file.split('/')[-1]
+            if name.startswith("queue"):
+                list_prqueue_paths.append(file)
+        return list_prqueue_paths
+
+    def __load_prqueues_from_path(self, list_prqueue_paths):
+        list_prqueues = []
+        for path in list_prqueue_paths:
+            current_prqueue = pickle.load(path)
+            list_prqueues.append(current_prqueue)
+        return list_prqueues
+
+    def __merge_priority_queues(self, list_prqueues, max_lenght_prqueue):
+        final_prqueues=[]
+        for i in range(len(list_prqueues[0])):
+            current_class_queue = []
+            for j in range(len(list_prqueues)):
+                for tpl in list_prqueues[j][i]:
+                    heapq.heappush(current_class_queue, tpl)
+            self.__cut_down_priority_queue(current_class_queue, max_lenght_prqueue)
+            
+    def __cut_down_priority_queue(self, current_class_queue, max_lenght_prqueue):
+        if(len(current_class_queue) <= max_lenght_prqueue):
+            return
+        for j in range(len(current_class_queue)-max_lenght_prqueue):
+            heapq.heappop(current_class_queue)
+
+
+    def merge(self, max_lenght_prqueue):
+        list_prqueue_paths = self.__get_all_prqueue_paths(self.prefix)
+        list_prqueues = self.__load_prqueues_from_path(list_prqueue_paths)
+        final_prqueue = self.__merge_priority_queues(list_prqueues, max_lenght_prqueue)
+        self.__save_prqueue(final_prqueue)
+
 
 class DatasetMetaData(Dataset):
     def __init__(self, dataframe):
@@ -86,7 +132,6 @@ class DatasetMetaData(Dataset):
         return caption, url 
 
 class Downloader():
-
     def __initialize_model(self, model):
         class TextEncoder(nn.Module):
             def __init__(self, model):
@@ -140,7 +185,7 @@ class Downloader():
         else:
             input_files = [url_path]
 
-        start_file = max+1
+        start_file = max(max, meta_from_to[0])+1
         return input_files, start_file
 
     def __filter_out_processed_non_relevant_files(self, file_list, max, meta_from_to):
