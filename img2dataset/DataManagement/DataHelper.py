@@ -354,7 +354,7 @@ class Downloader():
             final_label_list.extend(self.__create_label_list(url_caption_list, i))
             create_output_directory(output_dir_class)
             self.__download_class(url_caption_list, self.captions[i])
-            duration= timedelta(time.perf_counter-start)
+            duration= timedelta(time.perf_counter()-start)
             print(f"Duration for downloading one class: {duration}")
             i += 1
         final_label_list_save = make_path_absolute('data')
