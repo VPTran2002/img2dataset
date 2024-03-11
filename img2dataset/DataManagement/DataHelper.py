@@ -349,11 +349,14 @@ class Downloader():
         i = 0
         final_label_list = []
         for url_caption_list in self.priority_queues:
+            start = time.perf_counter()
             url_caption_list = [(k, tuple_url_caption[1], tuple_url_caption[2]) for k, tuple_url_caption in enumerate(url_caption_list)]
             output_dir_class = make_path_absolute(f"data/{self.captions[i]}")
             final_label_list.extend(self.__create_label_list(url_caption_list, i))
             create_output_directory(output_dir_class)
             self.__download_class(url_caption_list, self.captions[i])
+            duration= timedelta(time.perf_counter-start)
+            print(f"Duration for downloading one class: {duration}")
             i += 1
         final_label_list_save = make_path_absolute('data')
         #save priority queue
@@ -433,19 +436,19 @@ class Downloader():
         self.__collect_urls(meta_data_files, start_file)
         
         #now download everything
-        #self.__download_urls()
+        self.__download_urls()
 
 def main():
-        """
         parser = argparse.ArgumentParser(description="Downloader script with command-line options")
         parser.add_argument("--priority_queue_save_path", type=str, default="prqueue1", help="Path to save priority queue")
         parser.add_argument("--meta_from", type=int, default=1, help="Start index for meta")
-        parser.add_argument("--meta_to", type=int, default=4, help="End index for meta")
+        parser.add_argument("--meta_to", type=int, default=31, help="End index for meta")
         args = parser.parse_args()    
         l = Downloader(num_elements_per_caption=200000, 
         priority_queue_save_path=args.priority_queue_save_path, 
         meta_from_to=(args.meta_from, args.meta_to), 
-        batch_size_meta=2048, num_workers=2, shard_size=200000, thread_count=48)
+        batch_size_meta=2048, num_workers=2, shard_size=200000, thread_count=200)
+        
         """
         parser = argparse.ArgumentParser(description="Merge priority queues")
         parser.add_argument("--prefix", type=str, default="prqueue", help="Prefix")
@@ -453,6 +456,7 @@ def main():
         args = parser.parse_args()
         m = Merger(prefix=args.prefix)
         m.merge(args.max_length_prqueue)
+        """
 
 if __name__ == "__main__":
     main()    
