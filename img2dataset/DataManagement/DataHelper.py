@@ -93,7 +93,11 @@ class Merger():
     def __load_prqueues_from_path(self, list_prqueue_paths):
         list_prqueues = []
         for path in list_prqueue_paths:
-            current_prqueue = pickle.load(path)
+            prqueue = make_path_absolute(path.split("/")[-2])
+            fs, _ = fsspec.core.url_to_fs(prqueue)
+            if fs.exists(path):
+                with fs.open(path, 'rb') as f:
+                        current_prqueue = pickle.load(f)
             list_prqueues.append(current_prqueue)
         return list_prqueues
 
