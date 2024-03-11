@@ -42,9 +42,9 @@ def make_path_absolute(path):
         return os.path.abspath(p)
     return path
 
-def create_output_directory(self, output_folder):
-    self.output_folder = make_path_absolute(output_folder)
-    fs, output_path = fsspec.core.url_to_fs(self.output_folder)
+def create_output_directory(output_folder):
+    output_folder = make_path_absolute(output_folder)
+    fs, output_path = fsspec.core.url_to_fs(output_folder)
     if not fs.exists(output_path):
         fs.mkdir(output_path)
 
