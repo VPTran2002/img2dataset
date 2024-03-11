@@ -40,7 +40,13 @@ def make_path_absolute(path):
     fs, p = fsspec.core.url_to_fs(path)
     if fs.protocol == "file":
         return os.path.abspath(p)
-    return path    
+    return path
+
+def create_output_directory(self, output_folder):
+    self.output_folder = make_path_absolute(output_folder)
+    fs, output_path = fsspec.core.url_to_fs(self.output_folder)
+    if not fs.exists(output_path):
+        fs.mkdir(output_path)
 
 def download_resize_write(key_dist_url_caption, timeout, semaphore, output_dir_class):
     try:
@@ -76,14 +82,12 @@ class Merger():
     def __get_all_prqueue_paths(self, prefix):
         current_folder = make_path_absolute(".")
         fs_current, current_path = fsspec.core.url_to_fs(current_folder)
-        if not fs_current.exists(current_path):
-            fs_current.mkdir(current_path)
         files = fs_current.ls(current_path)
         list_prqueue_paths = []
         for file in files:
             name = file.split('/')[-1]
-            if name.startswith("queue"):
-                list_prqueue_paths.append(file)
+            if name.startswith("prqueue"):
+                list_prqueue_paths.append(f"{file}/queue.pkl")
         return list_prqueue_paths
 
     def __load_prqueues_from_path(self, list_prqueue_paths):
@@ -97,17 +101,33 @@ class Merger():
         final_prqueues=[]
         for i in range(len(list_prqueues[0])):
             current_class_queue = []
+            start=time.perf_counter()
             for j in range(len(list_prqueues)):
                 for tpl in list_prqueues[j][i]:
                     heapq.heappush(current_class_queue, tpl)
-            self.__cut_down_priority_queue(current_class_queue, max_lenght_prqueue)
+                current_class_queue = self.__cut_down_priority_queue(current_class_queue, max_lenght_prqueue)
+            final_prqueues.append(current_class_queue)
+            print("Finished class " + str(i))
+            elapsed_time = time.perf_counter()-start
+            duration = timedelta(seconds=elapsed_time)
+            print(f"Duration for one class is {duration}")
+        return final_prqueues
             
     def __cut_down_priority_queue(self, current_class_queue, max_lenght_prqueue):
         if(len(current_class_queue) <= max_lenght_prqueue):
-            return
+            return current_class_queue
         for j in range(len(current_class_queue)-max_lenght_prqueue):
             heapq.heappop(current_class_queue)
+        return current_class_queue    
 
+    def __save_prqueue(self):
+        create_output_directory("prqueue_final")
+        prqueue = make_path_absolute("prqueue_final")
+        #save priority queue
+        fs, prqueue_path = fsspec.core.url_to_fs(prqueue)
+        file_path_queue = f"{prqueue_path}/queue.pkl"
+        with fs.open(file_path_queue, 'wb') as f:
+            pickle.dump(self.priority_queues, f)
 
     def merge(self, max_lenght_prqueue):
         list_prqueue_paths = self.__get_all_prqueue_paths(self.prefix)
@@ -211,15 +231,7 @@ class Downloader():
                 number_part = int(name[6:])
                 if number_part > maximum:
                     maximum = number_part
-        return maximum            
-
-
-    def __create_output_directory(self, output_folder):
-        self.output_folder = make_path_absolute(output_folder)
-        fs, output_path = fsspec.core.url_to_fs(self.output_folder)
-        if not fs.exists(output_path):
-            fs.mkdir(output_path)
-            
+        return maximum                      
 
     def __collect_urls(self, meta_data_files: list, start_file: int):
         for i, input_file in enumerate(meta_data_files):
@@ -250,7 +262,7 @@ class Downloader():
 
             
     def __save_priority_queue(self, filenumber):
-        self.__create_output_directory(self.priority_queue_save_path)
+        create_output_directory(self.priority_queue_save_path)
         prqueue = make_path_absolute(self.priority_queue_save_path)
         #save priority queue
         fs, prqueue_path = fsspec.core.url_to_fs(prqueue)
@@ -336,7 +348,7 @@ class Downloader():
             url_caption_list = [(k, tuple_url_caption[1], tuple_url_caption[2]) for k, tuple_url_caption in enumerate(url_caption_list)]
             output_dir_class = make_path_absolute(f"data/{self.captions[i]}")
             final_label_list.extend(self.__create_label_list(url_caption_list, i))
-            self.__create_output_directory(output_dir_class)
+            create_output_directory(output_dir_class)
             self.__download_class(url_caption_list, self.captions[i])
             i += 1
         final_label_list_save = make_path_absolute('data')
@@ -411,7 +423,7 @@ class Downloader():
         
         self.__initialize_model(model)
         self.__initialize_priority_queue()    
-        self.__create_output_directory(output_folder)
+        create_output_directory(output_folder)
         meta_data_files, start_file = self.__get_names_meta_data_files(pathToMeta, meta_from_to)
         print("meta_files " + str(meta_data_files))
         self.__collect_urls(meta_data_files, start_file)
@@ -420,6 +432,7 @@ class Downloader():
         #self.__download_urls()
 
 def main():
+        """
         parser = argparse.ArgumentParser(description="Downloader script with command-line options")
         parser.add_argument("--priority_queue_save_path", type=str, default="prqueue1", help="Path to save priority queue")
         parser.add_argument("--meta_from", type=int, default=1, help="Start index for meta")
@@ -429,6 +442,13 @@ def main():
         priority_queue_save_path=args.priority_queue_save_path, 
         meta_from_to=(args.meta_from, args.meta_to), 
         batch_size_meta=2048, num_workers=2, shard_size=200000, thread_count=48)
+        """
+        parser = argparse.ArgumentParser(description="Merge priority queues")
+        parser.add_argument("--prefix", type=str, default="prqueue", help="Prefix")
+        parser.add_argument("--max_length_prqueue", type=int, default=200000, help="Maximum length of priority queue")
+        args = parser.parse_args()
+        m = Merger(prefix=args.prefix)
+        m.merge(args.max_length_prqueue)
 
 if __name__ == "__main__":
     main()    
