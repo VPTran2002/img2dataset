@@ -53,7 +53,6 @@ def download_resize_write(key_dist_url_caption, timeout, semaphore, output_dir_c
         # Download image
         user_agent_string = "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:72.0) Gecko/20100101 Firefox/72.0"
         headers={"User-Agent": user_agent_string}
-        print(key_dist_url_caption[1])
         response = requests.get(key_dist_url_caption[1], timeout=timeout, headers=headers)
         if response.status_code == 200:
             # Decode image
