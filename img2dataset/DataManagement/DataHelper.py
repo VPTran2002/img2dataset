@@ -124,14 +124,14 @@ class Merger():
             heapq.heappop(current_class_queue)
         return current_class_queue    
 
-    def __save_prqueue(self):
+    def __save_prqueue(self, final_prqueue):
         create_output_directory("prqueue_final")
         prqueue = make_path_absolute("prqueue_final")
         #save priority queue
         fs, prqueue_path = fsspec.core.url_to_fs(prqueue)
         file_path_queue = f"{prqueue_path}/queue.pkl"
         with fs.open(file_path_queue, 'wb') as f:
-            pickle.dump(self.priority_queues, f)
+            pickle.dump(final_prqueue, f)
 
     def merge(self, max_lenght_prqueue):
         list_prqueue_paths = self.__get_all_prqueue_paths(self.prefix)
