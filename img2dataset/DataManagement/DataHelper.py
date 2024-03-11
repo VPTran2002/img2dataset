@@ -438,6 +438,7 @@ class Downloader():
         self.__download_urls()
 
 def main():
+        """
         parser = argparse.ArgumentParser(description="Downloader script with command-line options")
         parser.add_argument("--priority_queue_save_path", type=str, default="prqueue1", help="Path to save priority queue")
         parser.add_argument("--meta_from", type=int, default=1, help="Start index for meta")
@@ -447,15 +448,15 @@ def main():
         priority_queue_save_path=args.priority_queue_save_path, 
         meta_from_to=(args.meta_from, args.meta_to), 
         batch_size_meta=2048, num_workers=2, shard_size=200000, thread_count=200)
-        
         """
+        
         parser = argparse.ArgumentParser(description="Merge priority queues")
         parser.add_argument("--prefix", type=str, default="prqueue", help="Prefix")
-        parser.add_argument("--max_length_prqueue", type=int, default=200000, help="Maximum length of priority queue")
+        parser.add_argument("--max_length_prqueue", type=int, default=10000, help="Maximum length of priority queue")
         args = parser.parse_args()
         m = Merger(prefix=args.prefix)
         m.merge(args.max_length_prqueue)
-        """
+        
 
 if __name__ == "__main__":
     main()    
