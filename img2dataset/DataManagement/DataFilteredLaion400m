@@ -1,5 +1,7 @@
 from torch.utils.data import Dataset, DataLoader
-from DataHelper import make_path_absolute
+from DataHelper import make_path_absolute, create_output_directory
+from torch import nn
+import torch
 import fsspec
 import pickle
 import open_clip
@@ -7,32 +9,125 @@ from PIL import Image
 
 
 #Important note: before wrapping a Dataloader around this Dataset it is necessary to implement the collate function of the Dataloader
-class DatasetFilteredLaion400m(Dataset):
-
-    def __init__(self, folder_with_data: str, model: str = "ViT-B-32", transform=None):
+class DatasetPrecomputeEmbeddings(Dataset):
+    def __init__(self, folder_with_data: str, path_to_pretrained: str, model: str = "ViT-B-32"):
         super().__init__()
-        url_caption_path = make_path_absolute(folder_with_data)
-        self.folder_with_data = make_path_absolute(folder_with_data)
-        fs, self.url_caption_path = fsspec.core.url_to_fs(url_caption_path)
-        url_caption_path = f"{self.url_caption_path}/final_label_list.pkl"
-        self.tokenizer = open_clip.get_tokenizer(model)
+        folder_with_data = make_path_absolute(folder_with_data)
+        fs, self.folder_with_data= fsspec.core.url_to_fs(folder_with_data)
+        url_caption_path = f"{self.folder_with_data}/final_label_list.pkl"
         if fs.exists(url_caption_path):
             with fs.open(url_caption_path, 'rb') as f:
                 self.url_caption_data = pickle.load(f)
         self.total_length = len(self.url_caption_data)
-        self.transform=transform
-        
+        _, _, self.preprocess_val = open_clip.create_model_and_transforms(model, pretrained=path_to_pretrained)
+
     def __len__(self):
         return self.total_length
 
     def __getitem__(self, index):
-        nearest_class, path_caption = self.url_caption_data[index]
-        with open(path_caption[0], 'rb') as f:
+        class_path, caption = self.url_caption_data[index]
+        _, path_to_img = fsspec.core.url_to_fs(make_path_absolute(class_path))
+        with open(path_to_img, 'rb') as f:
             image = Image.open(f)
-            image = image.convert('RGB')
-        if self.transform:
-            image = self.transform(image)
-        return image, nearest_class, path_caption[1]
+            return self.preprocess_val(image), caption
+
+class Encoder(nn.Module):
+    def __init__(self, model, mode):
+        super().__init__()
+        self.model = model
+        self.mode = mode
+    def forward(self, input):
+        if self.mode == "text":
+            return self.model.encode_text(input)
+        else:
+            return self.model.encode_image(input)
+
+class DatasetFilteredLaion400m(Dataset):
+    def __init__(self, folder_with_data: str, batch_size: int,
+    path_to_pretrained: str, model: str = "ViT-B-32",
+    num_workers: int = 0, 
+    output_dir_save_embeddings: str="embeddings"):
+        super().__init__()
+        self.num_workers = num_workers
+        self.batch_size=batch_size
+        self.dataset_img_loader = DatasetPrecomputeEmbeddings(folder_with_data, path_to_pretrained, model) 
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")        
+        self.output_dir_save_embeddings = output_dir_save_embeddings
+        create_output_directory(self.output_dir_save_embeddings)
+        embeddings_computed = self.check_embeddings_already_computed()
+        if embeddings_computed:
+            self.img_features, self.text_features = self.__precompute_embeddings(self.dataset_img_loader, path_to_pretrained, model)
+        else:
+            self.__load_img_text_features()
+        self.total_length = self.img_features.shape[0]
+        del self.dataset_img_loader
+
+
+    def __load_img_text_features(self):
+        out_dir = make_path_absolute(self.output_dir_save_embeddings)
+        fs, out_path = fsspec.core.url_to_fs(out_dir)
+        file_path_img = f"{out_path}/img_feautures.pkl"
+        file_path_text = f"{out_path}/img_text.pkl"
+        with fs.open(file_path_img, 'rb') as f:
+            self.img_features = pickle.load(f)
+        with fs.open(file_path_text, 'rb') as f:
+            self.text_features = pickle.load(f)
+
+    def check_embeddings_already_computed(self):
+        out_dir = make_path_absolute(self.output_dir_save_embeddings)
+        fs, out_path = fsspec.core.url_to_fs(out_dir)
+        file_path_img = f"{out_path}/img_feautures.pkl"
+        file_path_text = f"{out_path}/img_text.pkl"
+        if fs.exists(file_path_img) and fs.exists(file_path_text):       
+            return True
+        return False    
+
+    def __get_parallel_text_img_encoders(self, model_name: str,
+            path_to_pretrained: str):
+        model_text, _, _ = open_clip.create_model_and_transforms(
+            model_name, pretrained=path_to_pretrained)
+        model_img, _, _ = open_clip.create_model_and_transforms(
+            model_name, pretrained=path_to_pretrained)
+        model_text = Encoder(model_text, mode="text")
+        model_img = Encoder(model_img, mode="img")
+        if torch.cuda.device_count() > 1:
+            print(f"{torch.cuda.device_count()} GPUs are used for precomputing the embeddings")
+            model_text_parallel = nn.DataParallel(model_text)
+            model_img_parallel = nn.DataParallel(model_img)
+        model_text_parallel.to(self.device)
+        model_img_parallel.to(self.device)
+        return model_text_parallel, model_img_parallel     
+
+    def __precompute_embeddings(self, dataset_img_loader: Dataset, 
+            path_to_pretrained: str, model_name: str):
+        #create model
+        model_text_parallel, model_img_parallel = self.__get_parallel_text_img_encoders(model_name, path_to_pretrained)
+        tokenizer = open_clip.get_tokenizer(model_name)
+        def collate_fn(batch):
+            with torch.no_grad():
+                img_tensor, caption = zip(*batch)
+                return img_tensor, tokenizer(caption)
+        dataloader = DataLoader(self.dataset_img_loader,
+                     batch_size=self.batch_size, shuffle=False, 
+                     collate_fn=collate_fn, 
+                     num_workers=self.num_workers)
+        all_img_features = []
+        all_text_features = []
+        for img_tensor, caption_tensor in dataloader:
+            img_tensor = img_tensor.to(self.device)
+            caption_tensor = caption_tensor.to(self.device)
+            img_feature = model_img_parallel(img_tensor)
+            text_feature = model_text_parallel(caption_tensor)
+            all_img_features.append(img_feature)
+            all_text_features.append(text_feature)
+
+        return torch.vstack(all_img_features), torch.vstack(all_text_features)
+            
+    def __len__(self):
+        return self.total_length
+
+    def __getitem__(self, index):
+        return self.img_features[index], self.text_features[index]
 
 def main():
     dataset = DatasetFilteredLaion400m(folder_with_data="data")
